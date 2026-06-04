@@ -192,6 +192,7 @@ class NotchPanelController: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self = self else { return }
+                self.objectWillChange.send()
                 if self.isExpanded {
                     self.updatePanelFrame()
                 }

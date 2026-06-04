@@ -8,6 +8,7 @@ import Foundation
 struct NotchContentView: View {
     @ObservedObject var controller: NotchPanelController
     @ObservedObject private var l10n = LocalizationManager.shared
+    @ObservedObject private var mediaManager = SystemMediaManager.shared
     @State private var hoverTimer: Timer?
     @State private var mouseInside = false
     @State private var showSettings = false
