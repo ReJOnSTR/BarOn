@@ -16,13 +16,24 @@ struct NotchContentView: View {
     @AppStorage("clipboardAlertEnabled") private var clipboardAlertEnabled = true
     @AppStorage("mediaPlayerEnabled") private var mediaPlayerEnabled = true
     
+    @State private var activeTab: ActiveTab = .clipboard
+    
+    enum ActiveTab {
+        case clipboard
+        case media
+    }
+    
+    private var isMediaPlayingUnexpanded: Bool {
+        return mediaPlayerEnabled && mediaManager.isPlaying && !controller.isExpanded && !controller.isClipboardAlertActive
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
                 // Main notch shape
                 notchShape
                     .frame(
-                        width: controller.isExpanded ? controller.expandedWidth : (controller.isClipboardAlertActive ? 380 : controller.notchWidth),
+                        width: controller.isExpanded ? controller.expandedWidth : (controller.isClipboardAlertActive ? 380 : (isMediaPlayingUnexpanded ? 280 : controller.notchWidth)),
                         height: controller.isExpanded ? (controller.expandedHeight + controller.notchHeight) : controller.notchHeight
                     )
                     .animation(.spring(
@@ -65,6 +76,12 @@ struct NotchContentView: View {
                 // Clipboard alert content
                 if controller.isClipboardAlertActive && !controller.isExpanded {
                     clipboardAlertView
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+                
+                // Mini media content
+                if isMediaPlayingUnexpanded {
+                    miniMediaView
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
@@ -139,6 +156,57 @@ struct NotchContentView: View {
                     .foregroundColor(.white.opacity(0.95))
             }
             .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: controller.notchHeight)
+    }
+    
+    // MARK: - Mini Media View (Dynamic Island Style)
+    
+    private var miniMediaView: some View {
+        HStack {
+            // Left side (outside physical notch)
+            HStack(spacing: 5) {
+                if let artwork = mediaManager.artwork {
+                    Image(nsImage: artwork)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 16, height: 16)
+                        .cornerRadius(4)
+                } else {
+                    ZStack {
+                        LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        Image(systemName: "music.note")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 16, height: 16)
+                    .cornerRadius(4)
+                }
+                
+                Text(mediaManager.title)
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+            }
+            .frame(width: 120, alignment: .leading)
+            
+            Spacer()
+            
+            // Right side (outside physical notch)
+            HStack(spacing: 8) {
+                Button(action: {
+                    mediaManager.togglePlayPause()
+                }) {
+                    Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 8))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                
+                MiniVisualizerView()
+            }
+            .frame(width: 120, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .frame(height: controller.notchHeight)
@@ -225,7 +293,58 @@ struct NotchContentView: View {
                 .frame(height: 0.5)
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
+            
+            if !showSettings {
+                // Premium Segmented Tab Controls
+                HStack(spacing: 0) {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            activeTab = .clipboard
+                        }
+                    }) {
+                        Text(l10n[.filterAll] + " (Pano)")
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(activeTab == .clipboard ? .white : .white.opacity(0.45))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(activeTab == .clipboard ? Color.white.opacity(0.08) : Color.clear)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                            activeTab = .media
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Text(l10n[.mediaControls])
+                            if mediaManager.isPlaying {
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 4, height: 4)
+                            }
+                        }
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .foregroundColor(activeTab == .media ? .white : .white.opacity(0.45))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(activeTab == .media ? Color.white.opacity(0.08) : Color.clear)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(2)
+                .background(Color.white.opacity(0.03))
+                .cornerRadius(8)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
             
             // Center content area with transitions
             ZStack(alignment: .top) {
@@ -236,21 +355,22 @@ struct NotchContentView: View {
                             removal: .move(edge: .trailing).combined(with: .opacity)
                         ))
                 } else {
-                    VStack(spacing: 10) {
-                        if controller.isMediaActive {
-                            MediaPlayerWidget()
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                        
+                    if activeTab == .clipboard {
                         ClipboardHistoryView(controller: controller)
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .leading).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                    } else {
+                        MediaPlayerWidget()
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .trailing).combined(with: .opacity)
+                            ))
                     }
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .leading).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
                 }
             }
-            .frame(height: controller.isMediaActive && !showSettings ? 236 : 170)
+            .frame(height: 170)
             
             Spacer(minLength: 0)
         }
@@ -896,125 +1016,127 @@ struct MediaPlayerWidget: View {
     @ObservedObject private var mediaManager = SystemMediaManager.shared
     
     var body: some View {
-        HStack(spacing: 12) {
-            // Artwork
+        HStack(spacing: 20) {
+            // Square Album Art
             if let artwork = mediaManager.artwork {
                 Image(nsImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 40, height: 40)
-                    .cornerRadius(8)
+                    .frame(width: 105, height: 105)
+                    .cornerRadius(12)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 12)
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
+                    .shadow(color: Color.black.opacity(0.35), radius: 8, y: 4)
             } else {
                 ZStack {
                     LinearGradient(
-                        colors: [Color.blue.opacity(0.3), Color.purple.opacity(0.3)],
+                        colors: [Color.blue.opacity(0.15), Color.purple.opacity(0.15)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                     Image(systemName: "music.note")
-                        .foregroundColor(.white.opacity(0.6))
-                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.4))
+                        .font(.system(size: 28))
                 }
-                .frame(width: 40, height: 40)
-                .cornerRadius(8)
+                .frame(width: 105, height: 105)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
             }
             
-            // Track Info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(mediaManager.title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                
-                HStack(spacing: 4) {
-                    if let bundleId = mediaManager.clientBundleId,
-                       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-                        let icon = NSWorkspace.shared.icon(forFile: url.path)
-                        Image(nsImage: icon)
-                            .resizable()
-                            .frame(width: 10, height: 10)
-                            .cornerRadius(2)
-                    }
-                    
-                    Text(mediaManager.artist)
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.6))
+            // Track Info and Controls
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(mediaManager.title.isEmpty ? LocalizationManager.shared[.noActiveMedia] : mediaManager.title)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
                         .lineLimit(1)
-                }
-            }
-            
-            Spacer(minLength: 12)
-            
-            // Progress details (if duration > 0)
-            if mediaManager.duration > 0 {
-                Text(formatTime(mediaManager.currentProgress) + " / " + formatTime(mediaManager.duration))
-                    .font(.system(size: 8.5, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.4))
-            }
-            
-            // Controls
-            HStack(spacing: 8) {
-                Button(action: { mediaManager.previous() }) {
-                    Image(systemName: "backward.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.75))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: { mediaManager.togglePlayPause() }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(width: 26, height: 26)
-                        Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white)
+                    
+                    HStack(spacing: 4) {
+                        if let bundleId = mediaManager.clientBundleId,
+                           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                            let icon = NSWorkspace.shared.icon(forFile: url.path)
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 10, height: 10)
+                                .cornerRadius(2)
+                        }
+                        
+                        Text(mediaManager.artist.isEmpty ? "-" : mediaManager.artist)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
                     }
                 }
-                .buttonStyle(.plain)
                 
-                Button(action: { mediaManager.next() }) {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.75))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
+                // Progress Bar
+                if mediaManager.duration > 0 {
+                    VStack(spacing: 3) {
+                        let progressFraction = CGFloat(mediaManager.currentProgress / mediaManager.duration)
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(height: 3)
+                                
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.blue)
+                                    .frame(width: max(0, min(geometry.size.width, geometry.size.width * progressFraction)), height: 3)
+                            }
+                        }
+                        .frame(height: 3)
+                        
+                        HStack {
+                            Text(formatTime(mediaManager.currentProgress))
+                            Spacer()
+                            Text(formatTime(mediaManager.duration))
+                        }
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.4))
+                    }
+                } else {
+                    Spacer().frame(height: 15)
                 }
-                .buttonStyle(.plain)
+                
+                // Controls
+                HStack(spacing: 16) {
+                    Button(action: { mediaManager.previous() }) {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: { mediaManager.togglePlayPause() }) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white.opacity(0.1))
+                                .frame(width: 28, height: 28)
+                            Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Button(action: { mediaManager.next() }) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(height: 56)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay(
-            ZStack(alignment: .bottomLeading) {
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                
-                // Thin progress track at the bottom
-                if mediaManager.duration > 0 {
-                    let progressFraction = CGFloat(mediaManager.currentProgress / mediaManager.duration)
-                    GeometryReader { geometry in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(Color.blue.opacity(0.85))
-                            .frame(width: max(0, min(geometry.size.width, geometry.size.width * progressFraction)), height: 2)
-                    }
-                    .frame(height: 2)
-                    .padding(.horizontal, 1)
-                }
-            }
-        )
         .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .frame(height: 140)
     }
     
     private func formatTime(_ seconds: Double) -> String {
@@ -1022,5 +1144,29 @@ struct MediaPlayerWidget: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+// MARK: - Mini Equalizer Visualizer (Dynamic Island style)
+struct MiniVisualizerView: View {
+    @State private var animate = false
+    
+    var body: some View {
+        HStack(spacing: 1.5) {
+            ForEach(0..<4) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Color.blue)
+                    .frame(width: 1.5, height: animate ? CGFloat.random(in: 3...10) : 5)
+                    .animation(
+                        Animation.easeInOut(duration: Double.random(in: 0.25...0.45))
+                            .repeatForever(autoreverses: true),
+                        value: animate
+                    )
+            }
+        }
+        .frame(height: 10)
+        .onAppear {
+            animate = true
+        }
     }
 }

@@ -360,8 +360,7 @@ class NotchPanelController: ObservableObject {
         let targetHeight: CGFloat
         
         if isExp {
-            let mediaExtraHeight: CGFloat = isMediaActive ? 66 : 0
-            targetHeight = expandedHeight + 20 + notchHeight + mediaExtraHeight
+            targetHeight = expandedHeight + 20 + notchHeight
         } else if isClip {
             targetHeight = notchHeight + 20
         } else {
@@ -616,8 +615,7 @@ class NotchHostingView<Content: View>: NSHostingView<Content> {
         
         if controller.isExpanded {
             targetWidth = controller.expandedWidth
-            let mediaExtraHeight: CGFloat = controller.isMediaActive ? 66 : 0
-            targetHeight = controller.expandedHeight + controller.notchHeight + mediaExtraHeight
+            targetHeight = controller.expandedHeight + controller.notchHeight
         } else if controller.isClipboardAlertActive {
             targetWidth = 380
             targetHeight = controller.notchHeight
