@@ -179,8 +179,24 @@ class NotchPanelController: ObservableObject {
     let expandedWidth: CGFloat = 520
     let expandedHeight: CGFloat = 210
     
+    var isMediaActive: Bool {
+        let enabled = UserDefaults.standard.object(forKey: "mediaPlayerEnabled") as? Bool ?? true
+        return enabled && !SystemMediaManager.shared.title.isEmpty
+    }
+    
     init() {
         loadClipboardHistory()
+        
+        // Listen to media remote changes to dynamically adjust expanded window height
+        SystemMediaManager.shared.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                if self.isExpanded {
+                    self.updatePanelFrame()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     deinit {
@@ -343,7 +359,8 @@ class NotchPanelController: ObservableObject {
         let targetHeight: CGFloat
         
         if isExp {
-            targetHeight = expandedHeight + 20 + notchHeight
+            let mediaExtraHeight: CGFloat = isMediaActive ? 66 : 0
+            targetHeight = expandedHeight + 20 + notchHeight + mediaExtraHeight
         } else if isClip {
             targetHeight = notchHeight + 20
         } else {
@@ -390,7 +407,7 @@ class NotchPanelController: ObservableObject {
             
             let pasteboard = NSPasteboard.general
             let frontApp = NSWorkspace.shared.frontmostApplication
-            let sourceApp = frontApp?.localizedName ?? "Sistem"
+            let sourceApp = frontApp?.localizedName ?? LocalizationManager.shared[.system]
             let sourceAppBundleId = frontApp?.bundleIdentifier
             
             // 1. Check for Image content
@@ -598,7 +615,8 @@ class NotchHostingView<Content: View>: NSHostingView<Content> {
         
         if controller.isExpanded {
             targetWidth = controller.expandedWidth
-            targetHeight = controller.expandedHeight + controller.notchHeight
+            let mediaExtraHeight: CGFloat = controller.isMediaActive ? 66 : 0
+            targetHeight = controller.expandedHeight + controller.notchHeight + mediaExtraHeight
         } else if controller.isClipboardAlertActive {
             targetWidth = 380
             targetHeight = controller.notchHeight

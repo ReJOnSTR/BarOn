@@ -12,6 +12,8 @@
 		AA000003 /* NotchPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000013 /* NotchPanelController.swift */; };
 		AA000004 /* NotchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000014 /* NotchContentView.swift */; };
 		AA000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000015 /* Assets.xcassets */; };
+		AA000006 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000018 /* LocalizationManager.swift */; };
+		AA000007 /* SystemMediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000019 /* SystemMediaManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +25,8 @@
 		AA000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		AA000017 /* BarOn.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BarOn.entitlements; sourceTree = "<group>"; };
+		AA000018 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
+		AA000019 /* SystemMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemMediaManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +55,8 @@
 				AA000012 /* AppDelegate.swift */,
 				AA000013 /* NotchPanelController.swift */,
 				AA000014 /* NotchContentView.swift */,
+				AA000018 /* LocalizationManager.swift */,
+				AA000019 /* SystemMediaManager.swift */,
 				AA000015 /* Assets.xcassets */,
 				AA000016 /* Info.plist */,
 				AA000017 /* BarOn.entitlements */,
@@ -139,6 +145,8 @@
 				AA000002 /* AppDelegate.swift in Sources */,
 				AA000003 /* NotchPanelController.swift in Sources */,
 				AA000004 /* NotchContentView.swift in Sources */,
+				AA000006 /* LocalizationManager.swift in Sources */,
+				AA000007 /* SystemMediaManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

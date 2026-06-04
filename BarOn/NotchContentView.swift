@@ -7,11 +7,13 @@ import Foundation
 
 struct NotchContentView: View {
     @ObservedObject var controller: NotchPanelController
+    @ObservedObject private var l10n = LocalizationManager.shared
     @State private var hoverTimer: Timer?
     @State private var mouseInside = false
     @State private var showSettings = false
     
     @AppStorage("clipboardAlertEnabled") private var clipboardAlertEnabled = true
+    @AppStorage("mediaPlayerEnabled") private var mediaPlayerEnabled = true
     
     var body: some View {
         GeometryReader { geometry in
@@ -131,7 +133,7 @@ struct NotchContentView: View {
             
             // Right side (outside physical notch)
             HStack {
-                Text("Kopyalandı")
+                Text(l10n[.copied])
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundColor(.white.opacity(0.95))
             }
@@ -185,7 +187,7 @@ struct NotchContentView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Sabitle")
+                    .help(l10n[.pin])
                     
                     Button(action: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -203,7 +205,7 @@ struct NotchContentView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Ayarlar")
+                    .help(l10n[.settings])
                 }
                 .padding(.trailing, 16)
                 .frame(width: (controller.expandedWidth - controller.notchWidth) / 2)
@@ -233,14 +235,21 @@ struct NotchContentView: View {
                             removal: .move(edge: .trailing).combined(with: .opacity)
                         ))
                 } else {
-                    ClipboardHistoryView(controller: controller)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .leading).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
+                    VStack(spacing: 10) {
+                        if controller.isMediaActive {
+                            MediaPlayerWidget()
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                        
+                        ClipboardHistoryView(controller: controller)
+                    }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
                 }
             }
-            .frame(height: 170)
+            .frame(height: controller.isMediaActive && !showSettings ? 236 : 170)
             
             Spacer(minLength: 0)
         }
@@ -249,19 +258,35 @@ struct NotchContentView: View {
     // MARK: - Settings Content
     
     private var settingsContent: some View {
-        HStack(spacing: 32) {
+        HStack(spacing: 20) {
             // Clipboard alert toggle
             settingBlock(
                 icon: clipboardAlertEnabled ? "doc.on.clipboard.fill" : "doc.on.clipboard",
-                label: "Pano Takibi",
+                label: l10n[.clipboardTracking],
                 isActive: clipboardAlertEnabled,
                 action: { clipboardAlertEnabled.toggle() }
             )
             
+            // Media player toggle
+            settingBlock(
+                icon: mediaPlayerEnabled ? "play.circle.fill" : "play.circle",
+                label: l10n[.mediaControls],
+                isActive: mediaPlayerEnabled,
+                action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        mediaPlayerEnabled.toggle()
+                        controller.updatePanelFrame()
+                    }
+                }
+            )
+            
+            // Language toggle
+            languageToggle
+            
             // Quit button
             settingBlock(
                 icon: "power",
-                label: "Çıkış",
+                label: l10n[.quit],
                 isActive: false,
                 isDestructive: true,
                 action: {
@@ -270,6 +295,37 @@ struct NotchContentView: View {
             )
         }
         .padding(.horizontal, 20)
+    }
+    
+    // MARK: - Language Toggle
+    
+    private var languageToggle: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                l10n.currentLanguage = l10n.currentLanguage == .turkish ? .english : .turkish
+            }
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.purple.opacity(0.18))
+                        .frame(width: 52, height: 52)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color.purple.opacity(0.4), lineWidth: 1)
+                        )
+                    
+                    Text(l10n.currentLanguage.flag)
+                        .font(.system(size: 22))
+                }
+                
+                Text(l10n.currentLanguage.displayName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 80)
     }
     
     // MARK: - Setting Block
@@ -294,20 +350,23 @@ struct NotchContentView: View {
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white.opacity(isActive ? 0.8 : 0.5))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
         .buttonStyle(.plain)
+        .frame(width: 80)
     }
 }
 
 // MARK: - Clipboard Filter enum
-enum ClipboardFilter: String, CaseIterable {
-    case all = "Tümü"
-    case text = "Metin"
-    case image = "Görsel"
-    case link = "Bağlantı"
-    case color = "Renk"
-    case favorite = "Favoriler"
+enum ClipboardFilter: CaseIterable {
+    case all
+    case text
+    case image
+    case link
+    case color
+    case favorite
     
     var icon: String {
         switch self {
@@ -319,11 +378,23 @@ enum ClipboardFilter: String, CaseIterable {
         case .favorite: return "star.fill"
         }
     }
+    
+    func localizedName(_ l10n: LocalizationManager) -> String {
+        switch self {
+        case .all: return l10n[.filterAll]
+        case .text: return l10n[.filterText]
+        case .image: return l10n[.filterImage]
+        case .link: return l10n[.filterLink]
+        case .color: return l10n[.filterColor]
+        case .favorite: return l10n[.filterFavorites]
+        }
+    }
 }
 
 // MARK: - Clipboard History View
 struct ClipboardHistoryView: View {
     @ObservedObject var controller: NotchPanelController
+    @ObservedObject private var l10n = LocalizationManager.shared
     @State private var searchText = ""
     @State private var selectedFilter: ClipboardFilter = .all
     
@@ -375,7 +446,7 @@ struct ClipboardHistoryView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white.opacity(0.4))
                 
-                TextField("Geçmişte ara...", text: $searchText)
+                TextField(l10n[.searchPlaceholder], text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.white)
@@ -411,7 +482,7 @@ struct ClipboardHistoryView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: filter.icon)
                                     .font(.system(size: 8, weight: .bold))
-                                Text(filter.rawValue)
+                                Text(filter.localizedName(l10n))
                                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                             }
                             .padding(.horizontal, 8)
@@ -440,7 +511,7 @@ struct ClipboardHistoryView: View {
                         Image(systemName: "doc.on.clipboard")
                             .font(.system(size: 20))
                             .foregroundColor(.white.opacity(0.15))
-                        Text(searchText.isEmpty ? (selectedFilter == .favorite ? "Henüz favori öge yok." : "Pano geçmişi boş.") : "Sonuç bulunamadı.")
+                        Text(searchText.isEmpty ? (selectedFilter == .favorite ? l10n[.emptyFavorites] : l10n[.emptyHistory]) : l10n[.noResults])
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.3))
                     }
@@ -530,7 +601,7 @@ struct ClipboardItemCard: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .help("Tarayıcıda Aç")
+                        .help(LocalizationManager.shared[.openInBrowser])
                     }
                     
                     Button(action: onToggleFavorite) {
@@ -544,7 +615,7 @@ struct ClipboardItemCard: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .help("Favorilere Ekle")
+                    .help((item.isFavorite ?? false) ? LocalizationManager.shared[.removeFromFavorites] : LocalizationManager.shared[.addToFavorites])
                     
                     Button(action: onDelete) {
                         Image(systemName: "trash")
@@ -557,7 +628,7 @@ struct ClipboardItemCard: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .help("Geçmişten Sil")
+                    .help(LocalizationManager.shared[.deleteFromHistory])
                 }
                 .padding(4)
                 .transition(.scale.combined(with: .opacity))
@@ -643,7 +714,7 @@ struct ClipboardItemCard: View {
         VStack(alignment: .leading, spacing: 2) {
             // Main Text Content/Preview
             if item.type == .image {
-                Text("Görsel Pano")
+                Text(LocalizationManager.shared[.imageClipboard])
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundColor(.white)
             } else if item.isColor {
@@ -683,7 +754,7 @@ struct ClipboardItemCard: View {
                             .foregroundColor(.white.opacity(0.3))
                     }
                     
-                    Text(item.sourceApp ?? "Sistem")
+                    Text(item.sourceApp ?? LocalizationManager.shared[.system])
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .foregroundColor(.white.opacity(0.5))
                         .lineLimit(1)
@@ -700,11 +771,11 @@ struct ClipboardItemCard: View {
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.white.opacity(0.4))
                 } else if item.isColor {
-                    Text("Renk")
+                    Text(LocalizationManager.shared[.colorLabel])
                         .font(.system(size: 7.5))
                         .foregroundColor(.white.opacity(0.4))
                 } else if item.isURL {
-                    Text("Link")
+                    Text(LocalizationManager.shared[.linkLabel])
                         .font(.system(size: 7.5))
                         .foregroundColor(.white.opacity(0.4))
                 } else if item.isCodeSnippet {
@@ -817,4 +888,138 @@ struct NotchShape: InsettableShape {
     NotchContentView(controller: NotchPanelController())
         .frame(width: 560, height: 200)
         .background(Color.gray.opacity(0.3))
+}
+
+// MARK: - Media Player Widget
+struct MediaPlayerWidget: View {
+    @ObservedObject private var mediaManager = SystemMediaManager.shared
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Artwork
+            if let artwork = mediaManager.artwork {
+                Image(nsImage: artwork)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 40, height: 40)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                    )
+            } else {
+                ZStack {
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.3), Color.purple.opacity(0.3)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "music.note")
+                        .foregroundColor(.white.opacity(0.6))
+                        .font(.system(size: 16))
+                }
+                .frame(width: 40, height: 40)
+                .cornerRadius(8)
+            }
+            
+            // Track Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mediaManager.title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                HStack(spacing: 4) {
+                    if let bundleId = mediaManager.clientBundleId,
+                       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                        let icon = NSWorkspace.shared.icon(forFile: url.path)
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 10, height: 10)
+                            .cornerRadius(2)
+                    }
+                    
+                    Text(mediaManager.artist)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            
+            Spacer(minLength: 12)
+            
+            // Progress details (if duration > 0)
+            if mediaManager.duration > 0 {
+                Text(formatTime(mediaManager.currentProgress) + " / " + formatTime(mediaManager.duration))
+                    .font(.system(size: 8.5, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            
+            // Controls
+            HStack(spacing: 8) {
+                Button(action: { mediaManager.previous() }) {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: { mediaManager.togglePlayPause() }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 26, height: 26)
+                        Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: { mediaManager.next() }) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.75))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(height: 56)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                
+                // Thin progress track at the bottom
+                if mediaManager.duration > 0 {
+                    let progressFraction = CGFloat(mediaManager.currentProgress / mediaManager.duration)
+                    GeometryReader { geometry in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color.blue.opacity(0.85))
+                            .frame(width: max(0, min(geometry.size.width, geometry.size.width * progressFraction)), height: 2)
+                    }
+                    .frame(height: 2)
+                    .padding(.horizontal, 1)
+                }
+            }
+        )
+        .padding(.horizontal, 20)
+    }
+    
+    private func formatTime(_ seconds: Double) -> String {
+        guard !seconds.isNaN && seconds > 0 else { return "0:00" }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
 }
