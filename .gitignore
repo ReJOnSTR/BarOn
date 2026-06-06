@@ -1,0 +1,13 @@
+# Xcode Build Outputs & DerivedData
+Build/
+DerivedData/
+
+# Logs
+*.log
+
+# Test Binaries
+test_media_remote_binary
+test_media_remote_fetch
+
+# macOS System Files
+.DS_Store
