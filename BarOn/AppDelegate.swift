@@ -7,6 +7,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Request Accessibility permissions BEFORE hiding from dock
+        // This ensures macOS TCC registers BarOn in the Accessibility list
+        requestAccessibilityPermissions()
+        
         // Hide dock icon - this is a utility/overlay app
         NSApp.setActivationPolicy(.accessory)
         
@@ -16,6 +20,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize the notch panel
         notchPanelController = NotchPanelController()
         notchPanelController?.showPanel()
+    }
+    
+    private func requestAccessibilityPermissions() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+        let isTrusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        print("Accessibility permissions status: \(isTrusted)"); fflush(stdout)
+        
+        if !isTrusted {
+            // Also try to post a dummy CGEvent to force macOS to register this app
+            // in the Accessibility list even if the prompt doesn't show
+            if let event = CGEvent(source: nil) {
+                _ = event.type
+                print("CGEvent created to trigger TCC registration"); fflush(stdout)
+            }
+        }
     }
     
     func applicationWillTerminate(_ notification: Notification) {

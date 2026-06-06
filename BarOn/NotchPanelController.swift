@@ -619,6 +619,9 @@ class NotchHostingView<Content: View>: NSHostingView<Content> {
         } else if controller.isClipboardAlertActive {
             targetWidth = 380
             targetHeight = controller.notchHeight
+        } else if controller.isMediaActive {
+            targetWidth = 340
+            targetHeight = controller.notchHeight
         } else {
             targetWidth = controller.notchWidth
             targetHeight = controller.notchHeight

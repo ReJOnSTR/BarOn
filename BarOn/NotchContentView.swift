@@ -12,6 +12,7 @@ struct NotchContentView: View {
     @State private var hoverTimer: Timer?
     @State private var mouseInside = false
     @State private var showSettings = false
+    @State private var isHoveringControls = false
     
     @AppStorage("clipboardAlertEnabled") private var clipboardAlertEnabled = true
     @AppStorage("mediaPlayerEnabled") private var mediaPlayerEnabled = true
@@ -24,7 +25,7 @@ struct NotchContentView: View {
     }
     
     private var isMediaPlayingUnexpanded: Bool {
-        return mediaPlayerEnabled && mediaManager.isPlaying && !controller.isExpanded && !controller.isClipboardAlertActive
+        return mediaPlayerEnabled && !mediaManager.title.isEmpty && !controller.isExpanded && !controller.isClipboardAlertActive
     }
     
     var body: some View {
@@ -33,23 +34,18 @@ struct NotchContentView: View {
                 // Main notch shape
                 notchShape
                     .frame(
-                        width: controller.isExpanded ? controller.expandedWidth : (controller.isClipboardAlertActive ? 380 : (isMediaPlayingUnexpanded ? 280 : controller.notchWidth)),
+                        width: controller.isExpanded ? controller.expandedWidth : (controller.isClipboardAlertActive ? 380 : (isMediaPlayingUnexpanded ? 340 : controller.notchWidth)),
                         height: controller.isExpanded ? (controller.expandedHeight + controller.notchHeight) : controller.notchHeight
                     )
-                    .animation(.spring(
-                        response: 0.35,
-                        dampingFraction: 0.82,
-                        blendDuration: 0
-                    ), value: controller.isExpanded)
-                    .animation(.spring(
-                        response: 0.35,
-                        dampingFraction: 0.82,
-                        blendDuration: 0
-                    ), value: controller.isClipboardAlertActive)
-                    .animation(.spring(
-                        response: 0.35,
-                        dampingFraction: 0.85
-                    ), value: controller.isHovering)
+                    .animation(
+                        controller.isExpanded
+                            ? .spring(response: 0.38, dampingFraction: 0.82)
+                            : .spring(response: 0.32, dampingFraction: 0.85),
+                        value: controller.isExpanded
+                    )
+                    .animation(.spring(response: 0.35, dampingFraction: 0.82), value: controller.isClipboardAlertActive)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.85), value: controller.isHovering)
+                    .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isMediaPlayingUnexpanded)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -70,7 +66,14 @@ struct NotchContentView: View {
                 // Expanded content
                 if controller.isExpanded {
                     expandedContent
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.97))
+                                    .animation(.spring(response: 0.32, dampingFraction: 0.82).delay(0.08)),
+                                removal: .opacity.combined(with: .scale(scale: 0.95))
+                                    .animation(.spring(response: 0.25, dampingFraction: 0.85))
+                            )
+                        )
                 }
                 
                 // Clipboard alert content
@@ -82,7 +85,14 @@ struct NotchContentView: View {
                 // Mini media content
                 if isMediaPlayingUnexpanded {
                     miniMediaView
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.97))
+                                    .animation(.spring(response: 0.32, dampingFraction: 0.82).delay(0.08)),
+                                removal: .opacity.combined(with: .scale(scale: 0.95))
+                                    .animation(.spring(response: 0.25, dampingFraction: 0.85))
+                            )
+                        )
                 }
             }
             .clipShape(NotchShape(cornerRadius: controller.isExpanded ? 24 : 10, topCornerRadius: 0))
@@ -104,9 +114,13 @@ struct NotchContentView: View {
             let closeDamping = 0.85
             
             if hovering {
+                if isHoveringControls {
+                    return
+                }
+                
                 // Delay before expanding
                 hoverTimer = Timer.scheduledTimer(withTimeInterval: openDelay, repeats: false) { _ in
-                    if mouseInside && !controller.isClipboardAlertActive {
+                    if mouseInside && !controller.isClipboardAlertActive && !isHoveringControls {
                         withAnimation(.spring(response: response, dampingFraction: damping)) {
                             controller.isExpanded = true
                         }
@@ -124,7 +138,7 @@ struct NotchContentView: View {
             }
         }
         .onTapGesture {
-            if !controller.isExpanded && !controller.isClipboardAlertActive {
+            if !controller.isExpanded && !controller.isClipboardAlertActive && !isHoveringControls {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     controller.isExpanded = true
                 }
@@ -164,52 +178,62 @@ struct NotchContentView: View {
     // MARK: - Mini Media View (Dynamic Island Style)
     
     private var miniMediaView: some View {
-        HStack {
-            // Left side (outside physical notch)
-            HStack(spacing: 5) {
+        HStack(spacing: 0) {
+            // Left side (outside physical notch) - ONLY the artwork
+            HStack {
                 if let artwork = mediaManager.artwork {
                     Image(nsImage: artwork)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 16, height: 16)
-                        .cornerRadius(4)
+                        .frame(width: 24, height: 24)
+                        .cornerRadius(6)
+                        .shadow(color: Color.black.opacity(0.3), radius: 2, y: 1)
                 } else {
                     ZStack {
                         LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
                         Image(systemName: "music.note")
-                            .font(.system(size: 8))
+                            .font(.system(size: 11))
                             .foregroundColor(.white)
                     }
-                    .frame(width: 16, height: 16)
-                    .cornerRadius(4)
+                    .frame(width: 24, height: 24)
+                    .cornerRadius(6)
+                    .shadow(color: Color.black.opacity(0.3), radius: 2, y: 1)
                 }
-                
-                Text(mediaManager.title)
-                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.9))
-                    .lineLimit(1)
             }
-            .frame(width: 120, alignment: .leading)
+            .frame(width: 80, alignment: .center)
             
+            // Middle Spacer representing the physical camera notch (180pt wide)
             Spacer()
+                .frame(width: 180)
             
-            // Right side (outside physical notch)
-            HStack(spacing: 8) {
+            // Right side (outside physical notch) - Play/Pause and wave visualizer
+            HStack(spacing: 12) {
                 Button(action: {
                     mediaManager.togglePlayPause()
                 }) {
-                    Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white.opacity(0.85))
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.18))
+                            .frame(width: 24, height: 24)
+                        
+                        Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                            .offset(x: mediaManager.isPlaying ? 0 : 0.5)
+                    }
                 }
                 .buttonStyle(.plain)
                 
-                MiniVisualizerView()
+                MiniVisualizerView(isPlaying: mediaManager.isPlaying)
             }
-            .frame(width: 120, alignment: .trailing)
+            .frame(width: 80, alignment: .center)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHoveringControls = hovering
+            }
         }
-        .padding(.horizontal, 16)
-        .frame(height: controller.notchHeight)
+        .padding(.horizontal, 0)
+        .frame(width: 340, height: controller.notchHeight)
     }
         // MARK: - Expanded Content
     
@@ -1015,128 +1039,180 @@ struct NotchShape: InsettableShape {
 struct MediaPlayerWidget: View {
     @ObservedObject private var mediaManager = SystemMediaManager.shared
     
+    // States for smooth transition animations when song changes
+    @State private var animatedTitle: String = ""
+    @State private var animatedArtist: String = ""
+    @State private var animatedArtwork: NSImage? = nil
+    @State private var animatedIsPlaying: Bool = false
+    @State private var animatedDuration: Double = 0
+    @State private var animatedClientBundleId: String? = nil
+    
     var body: some View {
-        HStack(spacing: 20) {
-            // Square Album Art
-            if let artwork = mediaManager.artwork {
+        ZStack {
+            // Ambient glow effect based on artwork
+            if let artwork = animatedArtwork {
                 Image(nsImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 105, height: 105)
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-                    )
-                    .shadow(color: Color.black.opacity(0.35), radius: 8, y: 4)
-            } else {
-                ZStack {
-                    LinearGradient(
-                        colors: [Color.blue.opacity(0.15), Color.purple.opacity(0.15)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    Image(systemName: "music.note")
-                        .foregroundColor(.white.opacity(0.4))
-                        .font(.system(size: 28))
-                }
-                .frame(width: 105, height: 105)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
+                    .frame(width: 380, height: 140)
+                    .blur(radius: 35)
+                    .opacity(0.18)
+                    .clipped()
+                    .transition(.opacity)
             }
             
-            // Track Info and Controls
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(mediaManager.title.isEmpty ? LocalizationManager.shared[.noActiveMedia] : mediaManager.title)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    
-                    HStack(spacing: 4) {
-                        if let bundleId = mediaManager.clientBundleId,
-                           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-                            let icon = NSWorkspace.shared.icon(forFile: url.path)
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 10, height: 10)
-                                .cornerRadius(2)
-                        }
-                        
-                        Text(mediaManager.artist.isEmpty ? "-" : mediaManager.artist)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.5))
-                            .lineLimit(1)
-                    }
-                }
-                
-                // Progress Bar
-                if mediaManager.duration > 0 {
-                    VStack(spacing: 3) {
-                        let progressFraction = CGFloat(mediaManager.currentProgress / mediaManager.duration)
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(height: 3)
-                                
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.blue)
-                                    .frame(width: max(0, min(geometry.size.width, geometry.size.width * progressFraction)), height: 3)
-                            }
-                        }
-                        .frame(height: 3)
-                        
-                        HStack {
-                            Text(formatTime(mediaManager.currentProgress))
-                            Spacer()
-                            Text(formatTime(mediaManager.duration))
-                        }
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.4))
-                    }
-                } else {
-                    Spacer().frame(height: 15)
-                }
-                
-                // Controls
-                HStack(spacing: 16) {
-                    Button(action: { mediaManager.previous() }) {
-                        Image(systemName: "backward.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: { mediaManager.togglePlayPause() }) {
+            HStack(spacing: 20) {
+                // Square Album Art with Scale & Fade transition
+                ZStack {
+                    if let artwork = animatedArtwork {
+                        Image(nsImage: artwork)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 105, height: 105)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.35), radius: 8, y: 4)
+                            .transition(.scale.combined(with: .opacity))
+                    } else {
                         ZStack {
-                            Circle()
-                                .fill(Color.white.opacity(0.1))
-                                .frame(width: 28, height: 28)
-                            Image(systemName: mediaManager.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.white)
+                            LinearGradient(
+                                colors: [Color.blue.opacity(0.15), Color.purple.opacity(0.15)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "music.note")
+                                .foregroundColor(.white.opacity(0.4))
+                                .font(.system(size: 28))
+                        }
+                        .frame(width: 105, height: 105)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .id("art-" + animatedTitle + "-" + animatedArtist)
+                
+                // Track Info and Controls
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(animatedTitle.isEmpty ? LocalizationManager.shared[.noActiveMedia] : animatedTitle)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        
+                        HStack(spacing: 4) {
+                            if let bundleId = animatedClientBundleId,
+                               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                                let icon = NSWorkspace.shared.icon(forFile: url.path)
+                                Image(nsImage: icon)
+                                    .resizable()
+                                    .frame(width: 10, height: 10)
+                                    .cornerRadius(2)
+                            }
+                            
+                            Text(animatedArtist.isEmpty ? "-" : animatedArtist)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.5))
+                                .lineLimit(1)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .id("text-" + animatedTitle + "-" + animatedArtist)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .trailing)),
+                        removal: .opacity.combined(with: .move(edge: .leading))
+                    ))
                     
-                    Button(action: { mediaManager.next() }) {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(width: 24, height: 24)
+                    // Progress Bar with Gradient
+                    if animatedDuration > 0 {
+                        VStack(spacing: 3) {
+                            let progressFraction = CGFloat(mediaManager.currentProgress / animatedDuration)
+                            GeometryReader { geometry in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(height: 3)
+                                    
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(LinearGradient(colors: [Color.blue, Color.purple], startPoint: .leading, endPoint: .trailing))
+                                        .frame(width: max(0, min(geometry.size.width, geometry.size.width * progressFraction)), height: 3)
+                                }
+                            }
+                            .frame(height: 3)
+                            
+                            HStack {
+                                Text(formatTime(mediaManager.currentProgress))
+                                Spacer()
+                                Text(formatTime(animatedDuration))
+                            }
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                        }
+                    } else {
+                        Spacer().frame(height: 15)
                     }
-                    .buttonStyle(.plain)
+                    
+                    // Controls Row with Premium Interactive Buttons & Wave Visualizer
+                    HStack(spacing: 12) {
+                        MediaControlKeyButton(systemName: "backward.fill", action: { mediaManager.previous() })
+                        
+                        PlayPauseButton(isPlaying: animatedIsPlaying, action: { mediaManager.togglePlayPause() })
+                        
+                        MediaControlKeyButton(systemName: "forward.fill", action: { mediaManager.next() })
+                        
+                        Spacer()
+                        
+                        // Dynamic 12-bar wave visualizer
+                        ExpandedVisualizerView(isPlaying: animatedIsPlaying)
+                            .frame(width: 75, height: 20)
+                    }
                 }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .frame(height: 140)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .frame(height: 140)
+        .onAppear {
+            updateLocalState(animate: false)
+        }
+        .onChange(of: mediaManager.title) { _ in
+            updateLocalState(animate: true)
+        }
+        .onChange(of: mediaManager.artist) { _ in
+            updateLocalState(animate: true)
+        }
+        .onChange(of: mediaManager.artwork) { _ in
+            updateLocalState(animate: true)
+        }
+        .onChange(of: mediaManager.isPlaying) { newValue in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                animatedIsPlaying = newValue
+            }
+        }
+    }
+    
+    private func updateLocalState(animate: Bool) {
+        let block = {
+            animatedTitle = mediaManager.title
+            animatedArtist = mediaManager.artist
+            animatedArtwork = mediaManager.artwork
+            animatedDuration = mediaManager.duration
+            animatedClientBundleId = mediaManager.clientBundleId
+            animatedIsPlaying = mediaManager.isPlaying
+        }
+        
+        if animate {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                block()
+            }
+        } else {
+            block()
+        }
     }
     
     private func formatTime(_ seconds: Double) -> String {
@@ -1149,24 +1225,129 @@ struct MediaPlayerWidget: View {
 
 // MARK: - Mini Equalizer Visualizer (Dynamic Island style)
 struct MiniVisualizerView: View {
-    @State private var animate = false
+    let isPlaying: Bool
     
     var body: some View {
-        HStack(spacing: 1.5) {
-            ForEach(0..<4) { index in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.blue)
-                    .frame(width: 1.5, height: animate ? CGFloat.random(in: 3...10) : 5)
-                    .animation(
-                        Animation.easeInOut(duration: Double.random(in: 0.25...0.45))
-                            .repeatForever(autoreverses: true),
-                        value: animate
-                    )
+        TimelineView(.animation(minimumInterval: 0.03, paused: !isPlaying)) { timeline in
+            let time = timeline.date.timeIntervalSince1970
+            HStack(spacing: 1.5) {
+                ForEach(0..<5) { index in
+                    let height = isPlaying ? calculateHeight(index: index, time: time) : 3.0
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.white.opacity(0.9))
+                        .frame(width: 1.5, height: height)
+                }
             }
         }
-        .frame(height: 10)
-        .onAppear {
-            animate = true
+        .frame(height: 12)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isPlaying)
+    }
+    
+    private func calculateHeight(index: Int, time: Double) -> CGFloat {
+        let speed = 12.0
+        let phases: [Double] = [0.0, 1.2, 2.4, 0.8, 1.8]
+        let frequencies: [Double] = [1.0, 1.3, 0.8, 1.2, 0.9]
+        
+        let t = time * speed
+        let val1 = sin(t * frequencies[index] + phases[index])
+        let val2 = cos(t * 0.6 * frequencies[index] - phases[index] * 0.5)
+        let normalized = (val1 + val2 + 2.0) / 4.0 // 0.0 to 1.0
+        
+        return 3.0 + CGFloat(normalized) * 9.0 // range 3.0 to 12.0
+    }
+}
+
+// MARK: - Expanded Equalizer Visualizer (12-bar landscape style)
+struct ExpandedVisualizerView: View {
+    let isPlaying: Bool
+    
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.03, paused: !isPlaying)) { timeline in
+            let time = timeline.date.timeIntervalSince1970
+            HStack(spacing: 2) {
+                ForEach(0..<12) { index in
+                    let height = isPlaying ? calculateHeight(index: index, time: time) : 3.0
+                    RoundedRectangle(cornerRadius: 1.2)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue, Color.purple.opacity(0.8)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 2.2, height: height)
+                }
+            }
+        }
+        .frame(height: 20)
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isPlaying)
+    }
+    
+    private func calculateHeight(index: Int, time: Double) -> CGFloat {
+        let speed = 14.0
+        let phases: [Double] = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 0.3, 0.8, 1.3, 1.8, 2.3, 2.8]
+        let frequencies: [Double] = [1.1, 0.8, 1.3, 0.9, 1.2, 0.7, 1.4, 1.0, 1.1, 0.8, 1.3, 0.9]
+        
+        let t = time * speed
+        let val1 = sin(t * frequencies[index] + phases[index])
+        let val2 = cos(t * 0.7 * frequencies[index] - phases[index] * 0.4)
+        let normalized = (val1 + val2 + 2.0) / 4.0 // 0.0 to 1.0
+        
+        return 3.0 + CGFloat(normalized) * 17.0 // range 3.0 to 20.0
+    }
+}
+
+// MARK: - Premium Control Buttons
+struct PlayPauseButton: View {
+    let isPlaying: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(isHovered ? 0.15 : 0.08))
+                    .frame(width: 38, height: 38)
+                    .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
+                
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .offset(x: isPlaying ? 0 : 0.8)
+            }
+            .scaleEffect(isHovered ? 1.06 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+}
+
+struct MediaControlKeyButton: View {
+    let systemName: String
+    let action: () -> Void
+    @State private var isHovered = false
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(isHovered ? 0.08 : 0.0))
+                    .frame(width: 30, height: 30)
+                
+                Image(systemName: systemName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(isHovered ? .white : .white.opacity(0.75))
+            }
+            .scaleEffect(isHovered ? 1.08 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isHovered)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
         }
     }
 }
