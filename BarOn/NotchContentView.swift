@@ -269,15 +269,15 @@ struct NotchContentView: View {
                         }
                     }) {
                         Image(systemName: controller.isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 9.5, weight: .bold))
                             .foregroundColor(controller.isPinned ? Color.blue : Color.white.opacity(0.6))
                             .rotationEffect(.degrees(controller.isPinned ? 0 : 45))
-                            .frame(width: 32, height: 32)
+                            .frame(width: 24, height: 24)
                             .background(
                                 Circle()
                                     .fill(controller.isPinned ? Color.blue.opacity(0.15) : Color.white.opacity(0.08))
                             )
-                            .contentShape(Rectangle())
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .help(l10n[.pin])
@@ -288,14 +288,14 @@ struct NotchContentView: View {
                         }
                     }) {
                         Image(systemName: showSettings ? "gearshape.fill" : "gearshape")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(showSettings ? Color.blue : Color.white.opacity(0.6))
-                            .frame(width: 32, height: 32)
+                            .frame(width: 24, height: 24)
                             .background(
                                 Circle()
                                     .fill(showSettings ? Color.blue.opacity(0.15) : Color.white.opacity(0.08))
                             )
-                            .contentShape(Rectangle())
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .help(l10n[.settings])
@@ -1347,6 +1347,7 @@ struct CustomSegmentedControl: View {
             .foregroundColor(activeTab == tab ? .white : .white.opacity(0.5))
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
             .background(
                 ZStack {
                     if activeTab == tab {
