@@ -176,7 +176,9 @@ class NotchPanelController: ObservableObject {
     @Published var notchHeight: CGFloat = 32
     
     // Expanded dimensions
-    let expandedWidth: CGFloat = 520
+    var expandedWidth: CGFloat {
+        return max(520, notchWidth + 260)
+    }
     let expandedHeight: CGFloat = 210
     
     var isMediaActive: Bool {

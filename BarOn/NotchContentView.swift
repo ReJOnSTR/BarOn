@@ -241,25 +241,25 @@ struct NotchContentView: View {
         VStack(spacing: 0) {
             // Top area flanking the physical notch
             HStack(spacing: 0) {
-                // Left side container (just the status light on the far left)
+                // Left side: Status light
                 HStack {
                     Circle()
                         .fill(Color.green.opacity(0.8))
                         .frame(width: 8, height: 8)
                         .shadow(color: .green.opacity(0.6), radius: 4)
-                        .padding(.leading, 16)
-                    
-                    Spacer()
                 }
-                .frame(width: (controller.expandedWidth - controller.notchWidth) / 2)
+                .padding(.leading, 16)
                 
+                Spacer()
+                
+                // Physical notch spacer (keeps this section clear)
                 Spacer()
                     .frame(width: controller.notchWidth)
                 
-                // Right side container (both Settings and Pin buttons grouped at the far right)
-                HStack(spacing: 8) {
-                    Spacer()
-                    
+                Spacer()
+                
+                // Right side: Settings and Pin buttons
+                HStack(spacing: 10) {
                     Button(action: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                             controller.isPinned.toggle()
@@ -301,7 +301,6 @@ struct NotchContentView: View {
                     .help(l10n[.settings])
                 }
                 .padding(.trailing, 16)
-                .frame(width: (controller.expandedWidth - controller.notchWidth) / 2)
             }
             .frame(height: controller.notchHeight)
             
@@ -320,54 +319,10 @@ struct NotchContentView: View {
                 .padding(.bottom, 10)
             
             if !showSettings {
-                // Premium Segmented Tab Controls
-                HStack(spacing: 0) {
-                    Button(action: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
-                            activeTab = .clipboard
-                        }
-                    }) {
-                        Text(l10n[.filterAll] + " (Pano)")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(activeTab == .clipboard ? .white : .white.opacity(0.45))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(activeTab == .clipboard ? Color.white.opacity(0.08) : Color.clear)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
-                            activeTab = .media
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text(l10n[.mediaControls])
-                            if mediaManager.isPlaying {
-                                Circle()
-                                    .fill(Color.blue)
-                                    .frame(width: 4, height: 4)
-                            }
-                        }
-                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(activeTab == .media ? .white : .white.opacity(0.45))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(activeTab == .media ? Color.white.opacity(0.08) : Color.clear)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(2)
-                .background(Color.white.opacity(0.03))
-                .cornerRadius(8)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
+                // Accessible Premium Segmented Tab Controls
+                CustomSegmentedControl(activeTab: $activeTab, l10n: l10n, isPlaying: mediaManager.isPlaying)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
             }
             
             // Center content area with transitions
@@ -1349,5 +1304,66 @@ struct MediaControlKeyButton: View {
         .onHover { hovering in
             isHovered = hovering
         }
+    }
+}
+
+// MARK: - Premium Segmented Tab Control (with slide-behind animation)
+struct CustomSegmentedControl: View {
+    @Binding var activeTab: NotchContentView.ActiveTab
+    let l10n: LocalizationManager
+    let isPlaying: Bool
+    @Namespace private var animation
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            tabButton(title: l10n[.filterAll] + " (Pano)", tab: .clipboard)
+            tabButton(title: l10n[.mediaControls], tab: .media, showDot: isPlaying)
+        }
+        .padding(3)
+        .background(Color.white.opacity(0.04))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
+        )
+    }
+    
+    private func tabButton(title: String, tab: NotchContentView.ActiveTab, showDot: Bool = false) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                activeTab = tab
+            }
+        }) {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                if showDot {
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 5, height: 5)
+                        .shadow(color: .blue.opacity(0.5), radius: 2)
+                }
+            }
+            .foregroundColor(activeTab == tab ? .white : .white.opacity(0.5))
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(
+                ZStack {
+                    if activeTab == tab {
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.12), Color.white.opacity(0.07)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 1, y: 0.5)
+                            .matchedGeometryEffect(id: "active_tab_background", in: animation)
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
