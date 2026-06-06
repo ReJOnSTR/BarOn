@@ -241,14 +241,9 @@ struct NotchContentView: View {
         VStack(spacing: 0) {
             // Top area flanking the physical notch
             HStack(spacing: 0) {
-                // Left side: Status light
-                HStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.8))
-                        .frame(width: 8, height: 8)
-                        .shadow(color: .green.opacity(0.6), radius: 4)
-                }
-                .padding(.leading, 16)
+                // Left side: Empty spacing to keep layout balanced
+                Spacer()
+                    .frame(width: 16)
                 
                 Spacer()
                 
@@ -258,7 +253,7 @@ struct NotchContentView: View {
                 
                 Spacer()
                 
-                // Right side: Settings and Pin buttons
+                // Right side: Settings and Pin buttons (vertically aligned with camera center)
                 HStack(spacing: 10) {
                     Button(action: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -300,6 +295,7 @@ struct NotchContentView: View {
                     .buttonStyle(.plain)
                     .help(l10n[.settings])
                 }
+                .offset(y: 4)
                 .padding(.trailing, 16)
             }
             .frame(height: controller.notchHeight)
