@@ -314,12 +314,10 @@ struct NotchContentView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 10)
             
-            if !showSettings {
-                // Accessible Premium Segmented Tab Controls
-                CustomSegmentedControl(activeTab: $activeTab, l10n: l10n, isPlaying: mediaManager.isPlaying)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-            }
+            // Accessible Premium Segmented Tab Controls
+            CustomSegmentedControl(activeTab: $activeTab, showSettings: $showSettings, l10n: l10n, isPlaying: mediaManager.isPlaying)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
             
             // Center content area with transitions
             ZStack(alignment: .top) {
@@ -354,7 +352,7 @@ struct NotchContentView: View {
     // MARK: - Settings Content
     
     private var settingsContent: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 0) {
             // Clipboard alert toggle
             settingBlock(
                 icon: clipboardAlertEnabled ? "doc.on.clipboard.fill" : "doc.on.clipboard",
@@ -362,6 +360,8 @@ struct NotchContentView: View {
                 isActive: clipboardAlertEnabled,
                 action: { clipboardAlertEnabled.toggle() }
             )
+            
+            Spacer(minLength: 0)
             
             // Media player toggle
             settingBlock(
@@ -376,8 +376,12 @@ struct NotchContentView: View {
                 }
             )
             
+            Spacer(minLength: 0)
+            
             // Language toggle
             languageToggle
+            
+            Spacer(minLength: 0)
             
             // Quit button
             settingBlock(
@@ -391,6 +395,7 @@ struct NotchContentView: View {
             )
         }
         .padding(.horizontal, 20)
+        .frame(height: 170)
     }
     
     // MARK: - Language Toggle
@@ -1306,6 +1311,7 @@ struct MediaControlKeyButton: View {
 // MARK: - Premium Segmented Tab Control (with slide-behind animation)
 struct CustomSegmentedControl: View {
     @Binding var activeTab: NotchContentView.ActiveTab
+    @Binding var showSettings: Bool
     let l10n: LocalizationManager
     let isPlaying: Bool
     @Namespace private var animation
@@ -1328,6 +1334,7 @@ struct CustomSegmentedControl: View {
         Button(action: {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
                 activeTab = tab
+                showSettings = false
             }
         }) {
             HStack(spacing: 5) {
@@ -1340,13 +1347,13 @@ struct CustomSegmentedControl: View {
                         .shadow(color: .blue.opacity(0.5), radius: 2)
                 }
             }
-            .foregroundColor(activeTab == tab ? .white : .white.opacity(0.5))
+            .foregroundColor((activeTab == tab && !showSettings) ? .white : .white.opacity(0.5))
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .background(
                 ZStack {
-                    if activeTab == tab {
+                    if activeTab == tab && !showSettings {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(
                                 LinearGradient(
