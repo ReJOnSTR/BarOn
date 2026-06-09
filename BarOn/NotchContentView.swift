@@ -999,13 +999,13 @@ struct MediaPlayerWidget: View {
     @State private var animatedClientBundleId: String? = nil
     
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             // Ambient glow effect based on artwork
             if let artwork = animatedArtwork {
                 Image(nsImage: artwork)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 380, height: 140)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .blur(radius: 35)
                     .opacity(0.18)
                     .clipped()
@@ -1128,6 +1128,7 @@ struct MediaPlayerWidget: View {
             .padding(.top, 14)
             .frame(height: 140)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             updateLocalState(animate: false)
         }
