@@ -2,6 +2,7 @@ import SwiftUI
 import IOKit.ps
 import Darwin
 import Foundation
+import UniformTypeIdentifiers
 
 // MARK: - Notch Content View
 
@@ -13,6 +14,7 @@ struct NotchContentView: View {
     @State private var mouseInside = false
     @State private var showSettings = false
     @State private var isHoveringControls = false
+    @State private var isDraggingFileOverNotch = false
     
     @AppStorage("clipboardAlertEnabled") private var clipboardAlertEnabled = true
     @AppStorage("mediaPlayerEnabled") private var mediaPlayerEnabled = true
@@ -22,6 +24,7 @@ struct NotchContentView: View {
     enum ActiveTab {
         case clipboard
         case media
+        case dropZone
     }
     
     private var isMediaPlayingUnexpanded: Bool {
@@ -34,8 +37,8 @@ struct NotchContentView: View {
                 // Main notch shape
                 notchShape
                     .frame(
-                        width: controller.isExpanded ? controller.expandedWidth : (controller.isClipboardAlertActive ? 380 : (isMediaPlayingUnexpanded ? 340 : controller.notchWidth)),
-                        height: controller.isExpanded ? (controller.expandedHeight + controller.notchHeight) : controller.notchHeight
+                        width: controller.isExpanded ? controller.expandedWidth : (isDraggingFileOverNotch ? 340 : (controller.isClipboardAlertActive ? 380 : (isMediaPlayingUnexpanded ? 340 : controller.notchWidth))),
+                        height: controller.isExpanded ? (controller.expandedHeight + controller.notchHeight) : (isDraggingFileOverNotch ? (controller.notchHeight + 48) : controller.notchHeight)
                     )
                     .animation(
                         controller.isExpanded
@@ -46,6 +49,7 @@ struct NotchContentView: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.82), value: controller.isClipboardAlertActive)
                     .animation(.spring(response: 0.35, dampingFraction: 0.85), value: controller.isHovering)
                     .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isMediaPlayingUnexpanded)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isDraggingFileOverNotch)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -57,7 +61,7 @@ struct NotchContentView: View {
     private var notchShape: some View {
         ZStack(alignment: .top) {
             // Background shape (keeping shadow outside clipping bounds)
-            NotchShape(cornerRadius: controller.isExpanded ? 24 : 10, topCornerRadius: 0)
+            NotchShape(cornerRadius: controller.isExpanded ? 24 : (isDraggingFileOverNotch ? 16 : 10), topCornerRadius: 0)
                 .fill(Color.black)
                 .shadow(color: Color.black.opacity(0.5), radius: controller.isExpanded ? 20 : (controller.isClipboardAlertActive ? 8 : 3), y: controller.isExpanded ? 10 : 1)
             
@@ -83,7 +87,7 @@ struct NotchContentView: View {
                 }
                 
                 // Mini media content
-                if isMediaPlayingUnexpanded {
+                if isMediaPlayingUnexpanded && !isDraggingFileOverNotch {
                     miniMediaView
                         .transition(
                             .asymmetric(
@@ -94,8 +98,43 @@ struct NotchContentView: View {
                             )
                         )
                 }
+                
+                // Drop zone drag target overlay
+                if isDraggingFileOverNotch && !controller.isExpanded {
+                    dropZoneHoverView
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
             }
-            .clipShape(NotchShape(cornerRadius: controller.isExpanded ? 24 : 10, topCornerRadius: 0))
+            .clipShape(NotchShape(cornerRadius: controller.isExpanded ? 24 : (isDraggingFileOverNotch ? 16 : 10), topCornerRadius: 0))
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isDraggingFileOverNotch) { providers in
+            let group = DispatchGroup()
+            var fileURLs: [URL] = []
+            
+            for provider in providers {
+                if provider.hasItemConformingToTypeIdentifier("public.file-url") {
+                    group.enter()
+                    provider.loadItem(forTypeIdentifier: "public.file-url", options: nil) { item, error in
+                        defer { group.leave() }
+                        if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                            fileURLs.append(url)
+                        } else if let url = item as? URL {
+                            fileURLs.append(url)
+                        }
+                    }
+                }
+            }
+            
+            group.notify(queue: .main) {
+                for url in fileURLs {
+                    controller.addFileToDropZone(from: url)
+                }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    controller.isExpanded = true
+                    activeTab = .dropZone
+                }
+            }
+            return true
         }
         .onHover { hovering in
             mouseInside = hovering
@@ -315,7 +354,7 @@ struct NotchContentView: View {
                 .padding(.bottom, 10)
             
             // Accessible Premium Segmented Tab Controls
-            CustomSegmentedControl(activeTab: $activeTab, showSettings: $showSettings, l10n: l10n, isPlaying: mediaManager.isPlaying)
+            CustomSegmentedControl(activeTab: $activeTab, showSettings: $showSettings, controller: controller, l10n: l10n, isPlaying: mediaManager.isPlaying)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
                 .opacity(showSettings ? 0.0 : 1.0)
@@ -333,14 +372,20 @@ struct NotchContentView: View {
                     if activeTab == .clipboard {
                         ClipboardHistoryView(controller: controller)
                             .transition(.asymmetric(
-                                insertion: .move(edge: .leading).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
+                                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                                removal: .opacity.combined(with: .scale(scale: 0.98))
                             ))
-                    } else {
+                    } else if activeTab == .media {
                         MediaPlayerWidget()
                             .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .trailing).combined(with: .opacity)
+                                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                                removal: .opacity.combined(with: .scale(scale: 0.98))
+                            ))
+                    } else {
+                        DropZoneView(controller: controller)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                                removal: .opacity.combined(with: .scale(scale: 0.98))
                             ))
                     }
                 }
@@ -499,7 +544,7 @@ struct ClipboardHistoryView: View {
     @ObservedObject var controller: NotchPanelController
     @ObservedObject private var l10n = LocalizationManager.shared
     @State private var searchText = ""
-    @State private var selectedFilter: ClipboardFilter = .all
+    @State private var selectedFilter: FilterSelection = .smart(.all)
     
     let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -511,18 +556,23 @@ struct ClipboardHistoryView: View {
         
         // Apply filter
         switch selectedFilter {
-        case .all:
-            break
-        case .text:
-            items = items.filter { $0.type == .text && !$0.isURL && !$0.isColor }
-        case .image:
-            items = items.filter { $0.type == .image }
-        case .link:
-            items = items.filter { $0.isURL }
-        case .color:
-            items = items.filter { $0.isColor }
-        case .favorite:
-            items = items.filter { $0.isFavorite == true }
+        case .smart(let filter):
+            switch filter {
+            case .all:
+                break
+            case .text:
+                items = items.filter { $0.type == .text && !$0.isURL && !$0.isColor }
+            case .image:
+                items = items.filter { $0.type == .image }
+            case .link:
+                items = items.filter { $0.isURL }
+            case .color:
+                items = items.filter { $0.isColor }
+            case .favorite:
+                items = items.filter { $0.isFavorite == true }
+            }
+        case .folder(let folderName):
+            items = items.filter { $0.folderName == folderName }
         }
         
         // Apply search
@@ -573,13 +623,15 @@ struct ClipboardHistoryView: View {
             )
             .padding(.horizontal, 20)
             
-            // Filter Pills
+            // Filter Pills & Folders
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
+                    // Smart Filters
                     ForEach(ClipboardFilter.allCases, id: \.self) { filter in
+                        let selection = FilterSelection.smart(filter)
                         Button(action: {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                                selectedFilter = filter
+                                selectedFilter = selection
                             }
                         }) {
                             HStack(spacing: 4) {
@@ -592,16 +644,82 @@ struct ClipboardHistoryView: View {
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .fill(selectedFilter == filter ? Color.blue.opacity(0.18) : Color.white.opacity(0.04))
+                                    .fill(selectedFilter == selection ? Color.blue.opacity(0.18) : Color.white.opacity(0.04))
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 6)
-                                    .stroke(selectedFilter == filter ? Color.blue.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 0.5)
+                                    .stroke(selectedFilter == selection ? Color.blue.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 0.5)
                             )
-                            .foregroundColor(selectedFilter == filter ? Color.blue : Color.white.opacity(0.6))
+                            .foregroundColor(selectedFilter == selection ? Color.blue : Color.white.opacity(0.6))
                         }
                         .buttonStyle(.plain)
                     }
+                    
+                    // Separator line
+                    Rectangle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 1, height: 12)
+                        .padding(.horizontal, 2)
+                    
+                    // Custom Folders
+                    ForEach(controller.customFolders, id: \.self) { folder in
+                        let selection = FilterSelection.folder(folder)
+                        Button(action: {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                selectedFilter = selection
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 8))
+                                Text(folder)
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selectedFilter == selection ? Color.blue.opacity(0.18) : Color.white.opacity(0.04))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(selectedFilter == selection ? Color.blue.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 0.5)
+                            )
+                            .foregroundColor(selectedFilter == selection ? Color.blue : Color.white.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Klasörü Sil", role: .destructive) {
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                    controller.removeFolder(folder)
+                                    if selectedFilter == selection {
+                                        selectedFilter = .smart(.all)
+                                    }
+                                }
+                            }
+                        }
+                        .onDrop(of: [.text], isTargeted: nil) { providers in
+                            if let item = controller.draggedItem {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    controller.moveItemToFolder(item, folderName: folder)
+                                }
+                                return true
+                            }
+                            return false
+                        }
+                    }
+                    
+                    // Add Folder Button
+                    Button(action: {
+                        showAddFolderAlert()
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.blue.opacity(0.85))
+                            .padding(4)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Yeni Klasör Ekle")
                 }
                 .padding(.horizontal, 20)
             }
@@ -614,7 +732,7 @@ struct ClipboardHistoryView: View {
                         Image(systemName: "doc.on.clipboard")
                             .font(.system(size: 20))
                             .foregroundColor(.white.opacity(0.15))
-                        Text(searchText.isEmpty ? (selectedFilter == .favorite ? l10n[.emptyFavorites] : l10n[.emptyHistory]) : l10n[.noResults])
+                        Text(searchText.isEmpty ? getEmptyText() : l10n[.noResults])
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.3))
                     }
@@ -639,6 +757,7 @@ struct ClipboardHistoryView: View {
                                     controller.toggleFavorite(item)
                                 }
                             }
+                            .environmentObject(controller)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -648,6 +767,39 @@ struct ClipboardHistoryView: View {
         }
         .frame(height: 170)
     }
+    
+    private func getEmptyText() -> String {
+        switch selectedFilter {
+        case .smart(let filter):
+            return filter == .favorite ? l10n[.emptyFavorites] : l10n[.emptyHistory]
+        case .folder(let folderName):
+            return "\(folderName) klasörü boş"
+        }
+    }
+    
+    private func showAddFolderAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Yeni Klasör Oluştur"
+        alert.informativeText = "Klasör adını giriniz:"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Oluştur")
+        alert.addButton(withTitle: "İptal")
+        
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
+        input.placeholderString = "Klasör Adı"
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let folderName = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !folderName.isEmpty {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    controller.addFolder(folderName)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Clipboard Item Card
@@ -656,6 +808,7 @@ struct ClipboardItemCard: View {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let onToggleFavorite: () -> Void
+    @EnvironmentObject var controller: NotchPanelController
     @State private var isHovering = false
     
     private var appIcon: NSImage? {
@@ -751,7 +904,38 @@ struct ClipboardItemCard: View {
                 isHovering = hovering
             }
         }
+        .contextMenu {
+            if !controller.customFolders.isEmpty {
+                Menu("Klasöre Taşı") {
+                    Button("Hiçbiri (Klasörden Çıkar)") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            controller.moveItemToFolder(item, folderName: nil)
+                        }
+                    }
+                    ForEach(controller.customFolders, id: \.self) { folder in
+                        Button(folder) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                controller.moveItemToFolder(item, folderName: folder)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Button((item.isFavorite ?? false) ? "Favorilerden Çıkar" : "Favorilere Ekle") {
+                onToggleFavorite()
+            }
+            
+            Button("Kopyala") {
+                onCopy()
+            }
+            
+            Button("Sil", role: .destructive) {
+                onDelete()
+            }
+        }
         .onDrag {
+            controller.draggedItem = item
             if item.type == .image, let path = item.imagePath, let url = URL(string: path) {
                 return NSItemProvider(contentsOf: url) ?? NSItemProvider()
             } else {
@@ -1314,6 +1498,7 @@ struct MediaControlKeyButton: View {
 struct CustomSegmentedControl: View {
     @Binding var activeTab: NotchContentView.ActiveTab
     @Binding var showSettings: Bool
+    @ObservedObject var controller: NotchPanelController
     let l10n: LocalizationManager
     let isPlaying: Bool
     @Namespace private var animation
@@ -1322,6 +1507,7 @@ struct CustomSegmentedControl: View {
         HStack(spacing: 4) {
             tabButton(title: l10n[.filterAll] + " (Pano)", tab: .clipboard)
             tabButton(title: l10n[.mediaControls], tab: .media, showDot: isPlaying)
+            tabButton(title: "Depo", tab: .dropZone, count: controller.dropZoneFiles.count)
         }
         .padding(3)
         .background(Color.white.opacity(0.04))
@@ -1332,7 +1518,7 @@ struct CustomSegmentedControl: View {
         )
     }
     
-    private func tabButton(title: String, tab: NotchContentView.ActiveTab, showDot: Bool = false) -> some View {
+    private func tabButton(title: String, tab: NotchContentView.ActiveTab, showDot: Bool = false, count: Int = 0) -> some View {
         Button(action: {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
                 activeTab = tab
@@ -1347,6 +1533,15 @@ struct CustomSegmentedControl: View {
                         .fill(Color.blue)
                         .frame(width: 5, height: 5)
                         .shadow(color: .blue.opacity(0.5), radius: 2)
+                }
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
                 }
             }
             .foregroundColor((activeTab == tab && !showSettings) ? .white : .white.opacity(0.5))
@@ -1371,5 +1566,213 @@ struct CustomSegmentedControl: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Drop Zone Hover View
+extension NotchContentView {
+    var dropZoneHoverView: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "square.and.arrow.down.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.blue)
+            
+            Text("Dosyaları Buraya Bırakın")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.9))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round, miterLimit: 0, dash: [4, 4], dashPhase: 0))
+                .padding(4)
+        )
+        .frame(height: controller.notchHeight + 48)
+    }
+}
+
+// MARK: - Filter Selection Helper
+enum FilterSelection: Hashable {
+    case smart(ClipboardFilter)
+    case folder(String)
+}
+
+// MARK: - Drop Zone View
+struct DropZoneView: View {
+    @ObservedObject var controller: NotchPanelController
+    @State private var isHoveringClear = false
+    
+    let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Header actions: Clear All
+            if !controller.dropZoneFiles.isEmpty {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            controller.clearDropZone()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("Tümünü Temizle")
+                        }
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundColor(.red.opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.red.opacity(isHoveringClear ? 0.15 : 0.05))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering in
+                        isHoveringClear = hovering
+                    }
+                }
+                .padding(.horizontal, 20)
+                .frame(height: 22)
+            }
+            
+            // Files Grid / List
+            ScrollView(.vertical, showsIndicators: true) {
+                if controller.dropZoneFiles.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.15))
+                        
+                        Text("Depo Boş")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white.opacity(0.4))
+                        
+                        Text("Çentik üzerine dosyaları sürükleyip\nbırakarak buraya kaydedebilirsiniz.")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.25))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 16)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(controller.dropZoneFiles, id: \.self) { fileURL in
+                            DropZoneFileCard(fileURL: fileURL) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    controller.removeFileFromDropZone(fileURL)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .frame(height: 170)
+    }
+}
+
+// MARK: - Drop Zone File Card
+struct DropZoneFileCard: View {
+    let fileURL: URL
+    let onDelete: () -> Void
+    @State private var isHovering = false
+    
+    private var fileIcon: String {
+        let ext = fileURL.pathExtension.lowercased()
+        switch ext {
+        case "pdf": return "doc.richtext.fill"
+        case "zip", "rar", "7z", "tar", "gz": return "doc.zipper"
+        case "png", "jpg", "jpeg", "gif", "heic", "webp": return "photo"
+        case "mp3", "wav", "m4a", "flac": return "music.note"
+        case "mp4", "mov", "mkv", "avi": return "video.fill"
+        case "txt", "md", "rtf", "json", "xml": return "doc.text.fill"
+        case "swift", "js", "ts", "html", "css", "py", "sh": return "chevron.left.forwardslash.chevron.right"
+        default: return "doc.fill"
+        }
+    }
+    
+    private var isImage: Bool {
+        let ext = fileURL.pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "gif", "heic", "webp"].contains(ext)
+    }
+    
+    private var filePreviewImage: NSImage? {
+        if isImage, let image = NSImage(contentsOf: fileURL) {
+            return image
+        }
+        return nil
+    }
+    
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.white.opacity(isHovering ? 0.08 : 0.04))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.white.opacity(isHovering ? 0.15 : 0.06), lineWidth: 0.5)
+                        )
+                    
+                    if let image = filePreviewImage {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } else {
+                        Image(systemName: fileIcon)
+                            .font(.system(size: 16))
+                            .foregroundColor(.blue.opacity(0.85))
+                    }
+                }
+                
+                Text(fileURL.lastPathComponent)
+                    .font(.system(size: 8.5, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(isHovering ? 0.9 : 0.6))
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(0.02))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(isHovering ? 0.1 : 0.04), lineWidth: 0.5)
+            )
+            
+            if isHovering {
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red.opacity(0.85))
+                        .background(Circle().fill(Color.black.opacity(0.8)))
+                }
+                .buttonStyle(.plain)
+                .padding(4)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                isHovering = hovering
+            }
+        }
+        .onDrag {
+            return NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+        }
     }
 }

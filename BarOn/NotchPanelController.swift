@@ -19,13 +19,14 @@ struct ClipboardItem: Codable, Identifiable, Hashable {
     var sourceApp: String?
     var sourceAppBundleId: String?
     var isFavorite: Bool?
+    var folderName: String?
     
     static func text(_ content: String, sourceApp: String?, sourceAppBundleId: String?) -> ClipboardItem {
-        ClipboardItem(id: UUID(), type: .text, textContent: content, imagePath: nil, timestamp: Date(), sourceApp: sourceApp, sourceAppBundleId: sourceAppBundleId, isFavorite: false)
+        ClipboardItem(id: UUID(), type: .text, textContent: content, imagePath: nil, timestamp: Date(), sourceApp: sourceApp, sourceAppBundleId: sourceAppBundleId, isFavorite: false, folderName: nil)
     }
     
     static func image(_ path: String, sourceApp: String?, sourceAppBundleId: String?) -> ClipboardItem {
-        ClipboardItem(id: UUID(), type: .image, textContent: nil, imagePath: path, timestamp: Date(), sourceApp: sourceApp, sourceAppBundleId: sourceAppBundleId, isFavorite: false)
+        ClipboardItem(id: UUID(), type: .image, textContent: nil, imagePath: path, timestamp: Date(), sourceApp: sourceApp, sourceAppBundleId: sourceAppBundleId, isFavorite: false, folderName: nil)
     }
     
     // MARK: - Smart Detection Helpers
@@ -188,6 +189,8 @@ class NotchPanelController: ObservableObject {
     
     init() {
         loadClipboardHistory()
+        loadFolders()
+        loadDropZoneFiles()
         
         // Listen to media remote changes to dynamically adjust expanded window height
         SystemMediaManager.shared.objectWillChange
@@ -588,6 +591,121 @@ class NotchPanelController: ObservableObject {
                 saveClipboardHistory()
             }
         }
+    }
+    
+    // MARK: - Custom Folders State Management
+    @Published var customFolders: [String] = []
+    @Published var draggedItem: ClipboardItem? = nil
+    
+    func loadFolders() {
+        if let saved = UserDefaults.standard.stringArray(forKey: "customFolders") {
+            customFolders = saved
+        } else {
+            customFolders = ["Kodlar", "Linkler", "Görseller"]
+            saveFolders()
+        }
+    }
+    
+    func saveFolders() {
+        UserDefaults.standard.set(customFolders, forKey: "customFolders")
+    }
+    
+    func addFolder(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if !customFolders.contains(trimmed) {
+            customFolders.append(trimmed)
+            saveFolders()
+        }
+    }
+    
+    func removeFolder(_ name: String) {
+        customFolders.removeAll { $0 == name }
+        saveFolders()
+        
+        // Remove folder association from matching items
+        for i in 0..<clipboardHistory.count {
+            if clipboardHistory[i].folderName == name {
+                clipboardHistory[i].folderName = nil
+            }
+        }
+        saveClipboardHistory()
+    }
+    
+    func moveItemToFolder(_ item: ClipboardItem, folderName: String?) {
+        if let index = clipboardHistory.firstIndex(where: { $0.id == item.id }) {
+            clipboardHistory[index].folderName = folderName
+            saveClipboardHistory()
+        }
+    }
+    
+    // MARK: - Drop Zone State Management
+    @Published var dropZoneFiles: [URL] = []
+    
+    private var dropZoneCacheDirectory: URL {
+        let paths = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
+        let cacheDir = paths[0].appendingPathComponent("BarOnDropZoneCache")
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true, attributes: nil)
+        return cacheDir
+    }
+    
+    func loadDropZoneFiles() {
+        if let saved = UserDefaults.standard.stringArray(forKey: "dropZoneFilesPaths") {
+            dropZoneFiles = saved.compactMap { fileName in
+                let fileURL = dropZoneCacheDirectory.appendingPathComponent(fileName)
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    return fileURL
+                }
+                return nil
+            }
+            saveDropZoneFiles()
+        }
+    }
+    
+    func saveDropZoneFiles() {
+        let fileNames = dropZoneFiles.map { $0.lastPathComponent }
+        UserDefaults.standard.set(fileNames, forKey: "dropZoneFilesPaths")
+    }
+    
+    func addFileToDropZone(from url: URL) {
+        let fileExtension = url.pathExtension
+        let baseName = url.deletingPathExtension().lastPathComponent
+        var targetURL = dropZoneCacheDirectory.appendingPathComponent(url.lastPathComponent)
+        
+        var counter = 1
+        while FileManager.default.fileExists(atPath: targetURL.path) {
+            let uniqueName = "\(baseName)_\(counter).\(fileExtension)"
+            targetURL = dropZoneCacheDirectory.appendingPathComponent(uniqueName)
+            counter += 1
+        }
+        
+        let _ = url.startAccessingSecurityScopedResource()
+        defer { url.stopAccessingSecurityScopedResource() }
+        
+        do {
+            try FileManager.default.copyItem(at: url, to: targetURL)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.dropZoneFiles.append(targetURL)
+                self.saveDropZoneFiles()
+            }
+        } catch {
+            print("Failed to copy file to drop zone: \(error)")
+        }
+    }
+    
+    func removeFileFromDropZone(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        dropZoneFiles.removeAll { $0 == url }
+        saveDropZoneFiles()
+    }
+    
+    func clearDropZone() {
+        for url in dropZoneFiles {
+            try? FileManager.default.removeItem(at: url)
+        }
+        dropZoneFiles.removeAll()
+        saveDropZoneFiles()
     }
 }
 
