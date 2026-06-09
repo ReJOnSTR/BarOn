@@ -264,10 +264,10 @@ struct NotchContentView: View {
                         }
                     }) {
                         Image(systemName: controller.isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 9.5, weight: .bold))
+                            .font(.system(size: 10.5, weight: .bold))
                             .foregroundColor(controller.isPinned ? Color.blue : Color.white.opacity(0.6))
                             .rotationEffect(.degrees(controller.isPinned ? 0 : 45))
-                            .frame(width: 24, height: 24)
+                            .frame(width: 28, height: 28)
                             .background(
                                 Circle()
                                     .fill(controller.isPinned ? Color.blue.opacity(0.15) : Color.white.opacity(0.08))
@@ -283,9 +283,9 @@ struct NotchContentView: View {
                         }
                     }) {
                         Image(systemName: showSettings ? "gearshape.fill" : "gearshape")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(showSettings ? Color.blue : Color.white.opacity(0.6))
-                            .frame(width: 24, height: 24)
+                            .frame(width: 28, height: 28)
                             .background(
                                 Circle()
                                     .fill(showSettings ? Color.blue.opacity(0.15) : Color.white.opacity(0.08))
@@ -295,7 +295,7 @@ struct NotchContentView: View {
                     .buttonStyle(.plain)
                     .help(l10n[.settings])
                 }
-                .offset(y: 4)
+                .offset(y: 7)
                 .padding(.trailing, 16)
             }
             .frame(height: controller.notchHeight)
