@@ -318,6 +318,8 @@ struct NotchContentView: View {
             CustomSegmentedControl(activeTab: $activeTab, showSettings: $showSettings, l10n: l10n, isPlaying: mediaManager.isPlaying)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
+                .opacity(showSettings ? 0.0 : 1.0)
+                .allowsHitTesting(!showSettings)
             
             // Center content area with transitions
             ZStack(alignment: .top) {
